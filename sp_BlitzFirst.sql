@@ -17,11 +17,13 @@ ALTER PROCEDURE [dbo].[sp_BlitzFirst]
     @OutputTableNameFileStats NVARCHAR(256) = NULL ,
     @OutputTableNamePerfmonStats NVARCHAR(256) = NULL ,
     @OutputTableNameWaitStats NVARCHAR(256) = NULL ,
+	@OutputTableNameRunningNow NVARCHAR(256) = NULL ,
     @OutputXMLasNVARCHAR TINYINT = 0 ,
     @FilterPlansByDatabase VARCHAR(MAX) = NULL ,
     @CheckProcedureCache TINYINT = 0 ,
     @FileLatencyThresholdMS INT = 100 ,
     @SinceStartup TINYINT = 0 ,
+	@LiveQueries TINYINT = 0 ,
     @VersionDate DATETIME = NULL OUTPUT
     WITH EXECUTE AS CALLER, RECOMPILE
 AS
@@ -141,6 +143,7 @@ SELECT
     @OutputTableNameFileStats = QUOTENAME(@OutputTableNameFileStats),
     @OutputTableNamePerfmonStats = QUOTENAME(@OutputTableNamePerfmonStats),
     @OutputTableNameWaitStats = QUOTENAME(@OutputTableNameWaitStats),
+    @OutputTableNameRunningNow = QUOTENAME(@OutputTableNameRunningNow),
     @LineFeed = CHAR(13) + CHAR(10),
     @StartSampleTime = SYSDATETIMEOFFSET(),
     @FinishSampleTime = DATEADD(ss, @Seconds, SYSDATETIMEOFFSET()),
@@ -148,8 +151,8 @@ SELECT
     @OurSessionID = @@SPID;
 
 
-IF @SinceStartup = 1
-    SELECT @Seconds = 0, @ExpertMode = 1;
+IF @SinceStartup = 1 OR @Seconds = 0
+    SELECT @SinceStartup = 1, @Seconds = 0, @ExpertMode = 1;
 
 IF @Seconds = 0 AND CAST(SERVERPROPERTY('edition') AS VARCHAR(100)) = 'SQL Azure'
     SELECT @StartSampleTime = DATEADD(ms, AVG(-wait_time_ms), SYSDATETIMEOFFSET()), @FinishSampleTime = SYSDATETIMEOFFSET()
@@ -222,7 +225,7 @@ BEGIN
 
 
     /* What's running right now? This is the first and last result set. */
-    IF @SinceStartup = 0 AND @Seconds > 0 AND @ExpertMode = 1 
+    IF @LiveQueries = 1 OR (@ExpertMode = 1 AND @Seconds > 0)
     BEGIN
 	    IF @ProductVersionMajor > 9 and @ProductVersionMajor < 11
         BEGIN
@@ -460,8 +463,9 @@ BEGIN
 	    END 
 
         EXEC(@StringToExecute);
+		IF @ExpertMode = 0 RETURN;
 
-    END /* IF @SinceStartup = 0 AND @Seconds > 0 AND @ExpertMode = 1   -   What's running right now? This is the first and last result set. */
+    END /*     IF  @LiveQueries = 1 OR (@ExpertMode = 1 AND @Seconds > 0)   -   What's running right now? This is the first and last result set. */
      
 
     RAISERROR('Now starting diagnostic analysis',10,1) WITH NOWAIT;
@@ -2642,7 +2646,7 @@ BEGIN
     DROP TABLE #BlitzFirstResults;
 
     /* What's running right now? This is the first and last result set. */
-    IF @SinceStartup = 0 AND @Seconds > 0 AND @ExpertMode = 1 
+    IF @LiveQueries = 1 OR (@ExpertMode = 1 AND @Seconds > 0)
     BEGIN
 	    IF @ProductVersionMajor > 9 and @ProductVersionMajor < 11
         BEGIN
@@ -2881,7 +2885,7 @@ BEGIN
 
         EXEC(@StringToExecute);
 
-    END /* IF @SinceStartup = 0 AND @Seconds > 0 AND @ExpertMode = 1   -   What's running right now? This is the first and last result set. */
+    END /* IF  @LiveQueries = 1 OR (@ExpertMode = 1 AND @Seconds > 0)  -   What's running right now? This is the first and last result set. */
 
 END /* IF @Question IS NULL */
 ELSE IF @Question IS NOT NULL
